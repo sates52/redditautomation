@@ -128,7 +128,7 @@ def generate(count: int, subreddit: str):
         result = ai.generate_post(post['title'], post['body'], post_url)
         
         if result['success']:
-            db.update_post_status(post['id'], 'generated')
+            db.update_post_status(post['id'], 'processed')
             
             # Save the generated content
             new_id = db.add_post(
