@@ -1,87 +1,97 @@
 # -*- coding: utf-8 -*-
-import os
-import asyncio
-import logging
-from pathlib import Path
+"""Browser-Use Cloud API ile Reddit'e post atan istemci.
 
-from browser_use import Agent, Browser, BrowserConfig, BrowserContextConfig
-from langchain_openai import ChatOpenAI
+Bu istemci, browser-use'un bulut servisini (bu_ API key) kullanir.
+Tarayici senin bilgisayarinda acilmaz, her sey bulutta doner.
+Ne Playwright, ne LLM, ne lokal tarayici gerektirir.
+"""
+import os
+import time
+import logging
+import requests
 
 class BrowserUseRedditClient:
-    """Browser-Use AI Agent ile Reddit'e post atan istemci.
-    
-    NVIDIA API'yi OpenAI uyumlu endpoint üzerinden kullanır,
-    böylece browser-use'un beklediği ChatOpenAI arayüzü sağlanır.
-    """
+    API_BASE = "https://api.browser-use.com/api/v3"
 
-    def __init__(self, user_data_dir: str):
-        self.user_data_dir = str(Path(user_data_dir).absolute())
+    def __init__(self, user_data_dir: str = ""):
         self.logger = logging.getLogger(__name__)
-        
-        self.api_key = os.getenv("NVIDIA_API_KEY")
+        self.api_key = os.getenv("BROWSER_USE_API_KEY")
         if not self.api_key:
-            raise ValueError("NVIDIA_API_KEY .env dosyasinda bulunamadi.")
-
-    async def async_post(self, subreddit: str, title: str, body: str) -> dict:
-        self.logger.info("Browser-Use AI Agent baslatiliyor...")
-        
-        # ChatOpenAI'yi NVIDIA'nin OpenAI-uyumlu endpoint'ine yonlendiriyoruz
-        # Bu sayede browser-use'un Pydantic uyumluluk sorunu ortadan kalkiyor
-        llm = ChatOpenAI(
-            model="meta/llama-3.3-70b-instruct",
-            base_url="https://integrate.api.nvidia.com/v1",
-            api_key=self.api_key,
-            temperature=0.0
-        )
-        
-        browser = Browser(
-            config=BrowserConfig(
-                headless=False,
-                disable_security=True,
-                new_context_config=BrowserContextConfig(
-                    user_data_dir=self.user_data_dir,
-                    no_viewport=True
-                )
-            )
-        )
-        
-        # Escape any quotes in title/body to avoid breaking the prompt
-        safe_title = title.replace('"', '\\"')
-        safe_body = body.replace('"', '\\"')
-        
-        task = f"""Go to https://www.reddit.com/r/{subreddit}/submit
-Wait for the page to fully load.
-If you see a "Switch to markdown" or "Markdown Mode" button, click it.
-Type "{safe_title}" in the Title field.
-Type the following text in the Body/Text field: "{safe_body}"
-Click the Post button to submit.
-After posting, return the URL of the newly created post."""
-        
-        agent = Agent(task=task, llm=llm, browser=browser)
-        
-        try:
-            result = await agent.run()
-            self.logger.info(f"Browser-Use gorevi tamamlandi: {result}")
-            return {
-                "success": True,
-                "post_id": "browser-use-agent",
-                "post_url": str(result)
-            }
-        except Exception as e:
-            self.logger.error(f"Browser-Use hata: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-        finally:
-            try:
-                await browser.close()
-            except:
-                pass
+            raise ValueError("BROWSER_USE_API_KEY .env dosyasinda bulunamadi.")
+        self.headers = {
+            "X-Browser-Use-API-Key": self.api_key,
+            "Content-Type": "application/json"
+        }
 
     def post_to_subreddit(self, subreddit: str, title: str, body: str) -> dict:
-        """Senkron kopru fonksiyon - CLI tarafindan cagrilir."""
-        return asyncio.run(self.async_post(subreddit, title, body))
+        """Browser-Use Cloud API ile Reddit'e post atar."""
+        self.logger.info(f"Browser-Use Cloud API ile post gonderiliyor: {title[:50]}...")
+
+        task_text = (
+            f'Go to https://www.reddit.com/r/{subreddit}/submit\n'
+            f'Wait for the page to load.\n'
+            f'If you see a "Switch to markdown" or "Markdown Mode" button, click it.\n'
+            f'Fill the Title field with: {title}\n'
+            f'Fill the Body/Text field with: {body}\n'
+            f'Click the Post or Submit button.\n'
+            f'Wait for the post to be created and return the final URL of the new post.'
+        )
+
+        # 1. Oturum baslat (task gonder)
+        try:
+            resp = requests.post(
+                f"{self.API_BASE}/sessions",
+                json={"task": task_text},
+                headers=self.headers,
+                timeout=30
+            )
+            resp.raise_for_status()
+            session = resp.json()
+            session_id = session.get("id")
+            self.logger.info(f"Browser-Use oturumu basladi: {session_id}")
+        except Exception as e:
+            self.logger.error(f"Oturum baslatma hatasi: {e}")
+            return {"success": False, "error": str(e)}
+
+        # 2. Sonucu bekle (polling)
+        max_wait = 120  # saniye
+        poll_interval = 5
+        elapsed = 0
+
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+            try:
+                status_resp = requests.get(
+                    f"{self.API_BASE}/sessions/{session_id}",
+                    headers=self.headers,
+                    timeout=15
+                )
+                status_resp.raise_for_status()
+                data = status_resp.json()
+                status = data.get("status", "")
+
+                self.logger.info(f"Browser-Use durum: {status} ({elapsed}s)")
+
+                if status in ("completed", "finished", "done"):
+                    output = data.get("output", data.get("result", ""))
+                    self.logger.info(f"Browser-Use basarili: {output}")
+                    return {
+                        "success": True,
+                        "post_id": "browser-use-cloud",
+                        "post_url": str(output)
+                    }
+                elif status in ("failed", "error"):
+                    error_msg = data.get("error", data.get("output", "Bilinmeyen hata"))
+                    self.logger.error(f"Browser-Use basarisiz: {error_msg}")
+                    return {"success": False, "error": str(error_msg)}
+
+            except Exception as e:
+                self.logger.warning(f"Polling hatasi (devam ediliyor): {e}")
+                continue
+
+        return {"success": False, "error": f"Zaman asimi ({max_wait}s)"}
 
     def close(self):
         """Temizlik (cli.py tarafindan cagrilir)."""
