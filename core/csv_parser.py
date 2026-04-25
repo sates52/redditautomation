@@ -2,12 +2,15 @@ import pandas as pd
 from bs4 import BeautifulSoup
 import logging
 import csv
+import sys
 from typing import List, Dict
 
 class CSVParser:
     def __init__(self, csv_path: str):
         self.csv_path = csv_path
         self.logger = logging.getLogger(__name__)
+        # Increase field size limit for very large blog posts
+        csv.field_size_limit(sys.maxsize)
 
     def parse_posts(self) -> List[Dict]:
         """Parses the CSV and returns a list of published blog posts using standard csv module."""
