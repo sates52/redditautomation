@@ -30,9 +30,9 @@ class BrowserUseRedditClient:
         # Yapay Zeka modeli (NVIDIA üzerinden hızlı Llama modeli)
         llm = ChatNVIDIA(model="meta/llama-3.1-70b-instruct", temperature=0.0)
         
-        # Yama: ChatNVIDIA objesine browser-use'un beklediği 'provider' özelliğini ekliyoruz
+        # Yama: Pydantic kısıtlamasını aşarak ChatNVIDIA'ya 'provider' özelliğini zorla ekliyoruz
         if not hasattr(llm, 'provider'):
-            setattr(llm, 'provider', 'nvidia')
+            object.__setattr__(llm, 'provider', 'nvidia')
         
         # Kendi Chrome profilimizi kullanıyoruz
         if BrowserConfig:
