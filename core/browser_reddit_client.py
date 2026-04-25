@@ -24,10 +24,23 @@ class BrowserRedditClient:
         if not self.playwright:
             self.playwright = sync_playwright().start()
         if not self.browser_context:
+            args = [
+                "--disable-blink-features=AutomationControlled",
+                "--disable-session-crashed-bubble",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-infobars"
+            ]
+            
+            # Headless modda daha insancil bir User-Agent lazim
+            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            
             self.browser_context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
                 headless=self.headless,
-                args=["--disable-blink-features=AutomationControlled"]
+                args=args,
+                user_agent=user_agent,
+                viewport={'width': 1280, 'height': 800}
             )
         return self.browser_context
 
@@ -95,8 +108,8 @@ class BrowserRedditClient:
         try:
             submit_url = f"https://old.reddit.com/r/{subreddit}/submit?selftext=true"
             self.logger.info(f"Navigating to {submit_url}")
-            page.goto(submit_url, wait_until="domcontentloaded", timeout=30000)
-            time.sleep(2)
+            page.goto(submit_url, wait_until="networkidle", timeout=45000)
+            time.sleep(3) # Extra wait for old reddit layout to settle
 
             # Selftext (text post) tabinin secili oldugundan emin ol
             text_tab = page.query_selector("a.text-button, li.selected a[href*='selftext']")
