@@ -352,12 +352,15 @@ def browser_post(limit: int, subreddit: str, headful: bool):
     profile_dir.mkdir(parents=True, exist_ok=True)
     
     # Force headful for the first time or if requested
-    # NEW: Switch to Browser-Use AI Agent
-    from core.browser_use_client import BrowserUseRedditClient
-    client = BrowserUseRedditClient(user_data_dir=str(profile_dir.absolute()))
+    from core.browser_reddit_client import BrowserRedditClient
+    client = BrowserRedditClient(user_data_dir=str(profile_dir.absolute()), headless=not headful)
     
     try:
-        # User is already logged in as per previous sessions with persistant profile
+        # Check login first
+        if not client.check_login():
+            console.print("[red]Giris yapılamadı veya tarayıcı kapandı.[/red]")
+            return
+            
         posted_count = 0
         for post in approved_posts:
             if posted_count >= remaining_limit:

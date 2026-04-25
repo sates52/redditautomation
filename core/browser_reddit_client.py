@@ -100,9 +100,22 @@ class BrowserRedditClient:
                     page.fill(selector, title)
                     title_found = True
                     self.logger.info(f"Title filled using selector: {selector}")
-                    # Press Tab to naturally move focus to the Body field
-                    page.press(selector, "Tab")
-                    time.sleep(1)
+                    # Switch focus specifically to the body editor using JS to bypass shadow DOM completely
+                    page.evaluate("""
+                        setTimeout(() => {
+                            // Find all possible body containers
+                            const textAreas = document.querySelectorAll('textarea');
+                            const editables = document.querySelectorAll('div[contenteditable="true"]');
+                            
+                            // Usually the body is the last/largest editable div or second textarea
+                            if (editables.length > 0) {
+                                editables[editables.length - 1].focus();
+                            } else if (textAreas.length > 1) {
+                                textAreas[textAreas.length - 1].focus();
+                            }
+                        }, 500);
+                    """)
+                    time.sleep(1.5)
                     break
                 except:
                     continue
@@ -110,7 +123,7 @@ class BrowserRedditClient:
             if not title_found:
                 raise Exception("Could not find Title input field")
 
-            # Fill Body using Keyboard typing (Focus is already on the Body field due to TAB)
+            # Fill Body using Keyboard typing 
             self.logger.info("Typing body using keyboard simulation (bypassing strict selectors)...")
             page.keyboard.type(body, delay=0)
             time.sleep(1)
