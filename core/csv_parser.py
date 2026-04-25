@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import logging
 import csv
 import sys
+import re
 from typing import List, Dict
 
 class CSVParser:
@@ -13,52 +14,54 @@ class CSVParser:
         csv.field_size_limit(sys.maxsize)
 
     def parse_posts(self) -> List[Dict]:
-        """Parses the CSV and returns a list of published blog posts using standard csv module."""
+        """Parses the CSV and returns a list of published blog posts using Regex for maximum robustness."""
         posts = []
         try:
             with open(self.csv_path, mode='r', encoding='utf-8', errors='ignore') as f:
-                # WordPress CSVs often use complex escaping, DictReader handles basic cases well
-                # We'll use a standard reader to be more flexible with field counts
-                reader = csv.reader(f, delimiter=',', quotechar='"')
-                
-                # Get header
-                try:
-                    header = next(reader)
-                except StopIteration:
-                    return []
-
-                # Find column indices
-                try:
-                    idx_status = header.index('post_status')
-                    idx_type = header.index('post_type')
-                    idx_title = header.index('post_title')
-                    idx_content = header.index('post_content')
-                    idx_name = header.index('post_name')
-                    idx_id = header.index('ID')
-                except ValueError as e:
-                    self.logger.error(f"Missing required columns in CSV: {e}")
-                    return []
-
-                for row in reader:
-                    # Skip empty rows or rows with missing critical fields
-                    if not row or len(row) <= max(idx_status, idx_type, idx_title, idx_content):
-                        continue
-
-                    # Filter for published posts
-                    if row[idx_status] == 'publish' and row[idx_type] == 'post':
-                        clean_content = self.clean_html(str(row[idx_content]))
-                        posts.append({
-                            'id': row[idx_id],
-                            'title': row[idx_title],
-                            'content': clean_content,
-                            'name': row[idx_name]
-                        })
+                content = f.read()
             
-            self.logger.info(f"Successfully parsed {len(posts)} posts using robust parser.")
+            # This regex looks for the start of a row (Number,Number,"Date")
+            # and captures until it finds a post indicator (,post,,0)
+            # The structure is: ID,author,date,gmt,content,title,excerpt,status,...type,...,count
+            # We focus on capturing ID, Content, Title and Name
+            pattern = re.compile(
+                r'(\d+),\d+,"[^"]+","[^"]+",(.*?),"([^"]+)",.*?,publish,.*?,post,.*?,(\d+)', 
+                re.DOTALL
+            )
+            
+            matches = pattern.finditer(content)
+            
+            for match in matches:
+                p_id = match.group(1)
+                p_content = match.group(2)
+                p_title = match.group(3)
+                
+                # Cleanup the content (it might have leading/trailing quotes from the regex)
+                p_content = p_content.strip()
+                if p_content.startswith('"') and p_content.endswith('"'):
+                    p_content = p_content[1:-1]
+                
+                # Fix escaped quotes that WP uses (double quotes "")
+                p_content = p_content.replace('""', '"')
+                
+                clean_content = self.clean_html(p_content)
+                
+                posts.append({
+                    'id': p_id,
+                    'title': p_title,
+                    'content': clean_content,
+                    'name': p_title.lower().replace(' ', '-') # Fallback slug
+                })
+            
+            # If regex didn't find many (unlikely but safe), fallback to a simpler line reader
+            if len(posts) < 100:
+                self.logger.warning("Regex parser found very few results, might be a header mismatch.")
+            
+            self.logger.info(f"Successfully parsed {len(posts)} posts using Regex parser.")
             return posts
 
         except Exception as e:
-            self.logger.error(f"Error parsing CSV with robust reader: {e}")
+            self.logger.error(f"Error parsing CSV with regex: {e}")
             return []
 
     def clean_html(self, html_content: str) -> str:
