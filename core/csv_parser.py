@@ -1,6 +1,7 @@
 import pandas as pd
 from bs4 import BeautifulSoup
 import logging
+import csv
 from typing import List, Dict
 
 class CSVParser:
@@ -11,11 +12,14 @@ class CSVParser:
     def parse_posts(self) -> List[Dict]:
         """Parses the CSV and returns a list of published blog posts."""
         try:
-            # Using python engine and quoting for better robustness with complex content
+            # More robust CSV reading for multiline HTML content
             df = pd.read_csv(
                 self.csv_path, 
-                engine='python',
-                on_bad_lines='skip',
+                sep=',',
+                quotechar='"',
+                quoting=csv.QUOTE_MINIMAL,
+                escapechar='\\',
+                on_bad_lines='warn',
                 encoding='utf-8'
             )
             
