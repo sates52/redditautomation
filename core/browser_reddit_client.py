@@ -77,56 +77,115 @@ class BrowserRedditClient:
             self.logger.info(f"Navigating to {submit_url}")
             page.goto(submit_url)
             
-            # Wait for title input
-            page.wait_for_selector("textarea[placeholder='Title']", timeout=10000)
+            # Wait for any of the main inputs to appear (indicating page loaded)
+            page.wait_for_load_state("networkidle")
             
-            # Fill title
-            page.fill("textarea[placeholder='Title']", title)
+            # Try to switch to Markdown mode if it's not already there
+            # This makes the text area much easier to automate
+            # The button might say 'Switch to markdown' or 'Markdown Mode'
+            markdown_selectors = [
+                "button:has-text('Switch to markdown')",
+                "button:has-text('Markdown Mode')",
+                "button:has-text('Markdown')"
+            ]
             
-            # Fill body
-            # Reddit uses a rich text editor or markdown. Usually markdown is easier to target.
-            # Look for the markdown mode button if possible, or just fill the textarea
+            for selector in markdown_selectors:
+                try:
+                    btn = page.locator(selector).first
+                    if btn.is_visible():
+                        self.logger.info(f"Switching to Markdown mode using: {selector}")
+                        btn.click()
+                        time.sleep(1)
+                        break
+                except:
+                    continue
+
+            # Fill Title
+            # More robust selectors for Title
+            title_found = False
+            title_selectors = [
+                "textarea[name='title']",
+                "textarea[placeholder='Title']",
+                "h1[contenteditable='true']",
+                "textarea[placeholder*='Title']"
+            ]
             
-            # Try to switch to Markdown mode if it's in Fancy Pant editor
-            try:
-                markdown_button = page.wait_for_selector("text=Markdown Mode", timeout=2000)
-                if markdown_button:
-                    markdown_button.click()
-            except:
-                pass # Already in markdown or selector different
-                
-            # Fill the post body
-            # The selector for the body can be tricky.
-            # It's often a textarea or a contenteditable div
-            body_selector = "textarea[placeholder='Text (optional)']"
-            page.wait_for_selector(body_selector, timeout=5000)
-            page.fill(body_selector, body)
+            for selector in title_selectors:
+                try:
+                    page.wait_for_selector(selector, timeout=5000)
+                    page.fill(selector, title)
+                    title_found = True
+                    self.logger.info(f"Title filled using selector: {selector}")
+                    break
+                except:
+                    continue
             
-            # Wait a bit for UI to catch up
-            time.sleep(1)
+            if not title_found:
+                raise Exception("Could not find Title input field")
+
+            # Fill Body
+            # In Markdown mode, it's usually a textarea
+            body_found = False
+            body_selectors = [
+                "textarea[name='text']",
+                "textarea[placeholder*='Text']",
+                "textarea[placeholder*='optional']",
+                "div[contenteditable='true']"
+            ]
             
-            # Click Post button
-            # Button text is usually "Post"
-            post_button = page.locator("button:has-text('Post')").first
-            if post_button.is_enabled():
-                post_button.click()
-                
-                # Wait for redirection to the new post
-                # The URL should change from /submit to the post URL
-                page.wait_for_url(lambda url: "/comments/" in url, timeout=15000)
-                post_url = page.url
-                post_id = post_url.split("/comments/")[1].split("/")[0]
-                
-                return {
-                    "success": True,
-                    "post_id": post_id,
-                    "post_url": post_url
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": "Post button is disabled (maybe missing title or body?)"
-                }
+            for selector in body_selectors:
+                try:
+                    page.wait_for_selector(selector, timeout=5000)
+                    page.fill(selector, body)
+                    body_found = True
+                    self.logger.info(f"Body filled using selector: {selector}")
+                    break
+                except:
+                    continue
+            
+            if not body_found:
+                raise Exception("Could not find Body input field")
+
+            # Click Post / Submit
+            submit_found = False
+            submit_button_selectors = [
+                "button:has-text('Post')",
+                "button[type='submit']",
+                "button:has-text('Submit')"
+            ]
+            
+            for selector in submit_button_selectors:
+                try:
+                    btn = page.locator(selector).first
+                    if btn.is_enabled():
+                        btn.click()
+                        submit_found = True
+                        self.logger.info(f"Submit button clicked using selector: {selector}")
+                        break
+                except:
+                    continue
+
+            if not submit_found:
+                # One last try - maybe the button isn't enabled because of a small delay
+                time.sleep(2)
+                btn = page.locator("button:has-text('Post')").first
+                if btn.is_enabled():
+                    btn.click()
+                    submit_found = True
+
+            if not submit_found:
+                raise Exception("Could not find or click enabled Submit button")
+
+            # Wait for redirection to the new post
+            page.wait_for_url(lambda url: "/comments/" in url, timeout=20000)
+            post_url = page.url
+            post_id = post_url.split("/comments/")[1].split("/")[0]
+            
+            return {
+                "success": True,
+                "post_id": post_id,
+                "post_url": post_url
+            }
                 
         except Exception as e:
             self.logger.error(f"Browser post error: {e}")
