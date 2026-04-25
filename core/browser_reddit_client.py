@@ -114,13 +114,13 @@ class BrowserRedditClient:
             body_textarea.fill(body)
             self.logger.info("Icerik dolduruldu.")
 
-            # Gonder butonuna bas
-            # old.reddit.com'da buton class="save" ve type="submit"
-            submit_btn = page.locator("button.save[type='submit']").first
-            submit_btn.scroll_into_view_if_needed()
-            time.sleep(0.5)
-            submit_btn.click()
-            self.logger.info("Gonder butonuna basildi.")
+            # Gonder butonuna bas (JS ile - gorunurluk kontrolunu atla)
+            page.evaluate("""
+                const btn = document.querySelector('button.save[type="submit"]') 
+                          || document.querySelector('button[type="submit"]');
+                if (btn) btn.click();
+            """)
+            self.logger.info("Gonder butonuna basildi (JS ile).")
 
             # Yonlendirmeyi bekle (post sayfasina gider)
             # old.reddit.com'da /comments/ iceren URL'ye yonlendirir
