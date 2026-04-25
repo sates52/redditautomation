@@ -55,9 +55,9 @@ class AIGenerator:
             # Split title and body
             title, body = self._parse_reddit_response(full_response)
             
-            # Check if URL is in body, if not (though prompt asks for it), append it safely
+            # Check if URL is in body, if not (though prompt asks for it), append it safely with standard Markdown
             if post_url not in body:
-                body = f"{body}\n\nDevamı için blog yazımızı inceleyebilirsiniz: {post_url}"
+                body = f"{body}\n\n[Devamı için blog yazımızı inceleyebilirsiniz]({post_url})"
             
             return {
                 "success": True,
