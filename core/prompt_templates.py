@@ -60,9 +60,11 @@ HESAP VE TONLAMA KURALLARI:
 GÖNDERİ YAPISI (BU YAPIYA SADIK KAL):
 1. Başlık: İlk satır her zaman başlık olmalıdır (Markdown `#` işareti KULLANMA, sadece düz metin olarak başlığı yaz).
 2. Giriş (Hook): İlk 2-3 cümle okuyucuyu yakalamalı.
-3. Bağlam/Değer: Konunun özünü anlat. Önemli yerleri **bold** yap.
-4. Pratik Maddeler: Varsa 3-5 maddelik kısa, okunabilir Markdown listeleri kullan.
-5. Kapanış ve Link: Blog linkini ekle ve topluluğa tartışma sorusu yönelt.
+3. Bağlam (Context): Konunun ne hakkında olduğu ve neden üzerine konuşmaya değer (veya neden başlandığı) hakkında kısa bir bilgi.
+4. Temel İçgörüler (Core Insights): En önemli bölüm! Öğrenilen derslere ve gözlemlere odaklanan, neyin işe yarayıp yaramadığını anlatan, okunabilir doğal madde imleri (bullet points) kullan.
+5. Hatalar ve Zorluklar (Mistakes / Challenges): Konuyla alakalı mutlaka en az bir dürüst hataya veya yaşanılan bir zorluğa (struggle) yer ver. Bu samimiyeti artırır.
+6. Pratik Çıkarımlar (Practical Takeaways): Okuyucunun hayatına uygulayabileceği 3–6 arası aksiyon alınabilir, somut ipucu.
+7. Kapanış ve Tartışma (Closing + Discussion): En alta blog linkimizi ("Tam kaynağa buradan ulaşabilirsiniz: [Link]" şeklinde) ekle ve ardından doğal ve samimi bir şekilde topluluğu tartışmaya davet et.
 
 BUGÜNKÜ GÖNDERİ TARZI VE AÇISI:
 {angle_description}
