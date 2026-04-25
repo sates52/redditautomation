@@ -30,29 +30,31 @@ class BrowserUseRedditClient:
         # Yapay Zeka modeli (NVIDIA üzerinden hızlı Llama modeli)
         llm = ChatNVIDIA(model="meta/llama-3.1-70b-instruct", temperature=0.0)
         
-        # Kendi Chrome profilimizi kullanıyoruz (Giriş yapılmış olan)
+        # Yama: ChatNVIDIA objesine browser-use'un beklediği 'provider' özelliğini ekliyoruz
+        if not hasattr(llm, 'provider'):
+            setattr(llm, 'provider', 'nvidia')
+        
+        # Kendi Chrome profilimizi kullanıyoruz
         if BrowserConfig:
             browser_config = BrowserConfig(
                 user_data_dir=self.user_data_dir,
-                headless=False,
-                disable_security=True
+                headless=False
             )
             browser = Browser(config=browser_config)
         else:
-            # Fallback if BrowserConfig is not available (some older/newer versions)
             browser = Browser(
                 user_data_dir=self.user_data_dir,
                 headless=False
             )
         
         task_instruction = f"""
-        Go to https://www.reddit.com/r/{subreddit}/submit
-        Wait for the page to completely load. 
-        If you see any "Switch to markdown" or "Markdown Mode" button, click it.
-        Fill in the Title field exactly with: "{title}"
-        Fill in the Text/Body field exactly with: "{body}"
-        Click the "Post" or "Submit" button to publish it.
-        Wait for the success page to load and return the final URL of the created post.
+        Go to https://www.reddit.com/r/{subreddit}/submit. 
+        Wait for the page to load. 
+        If you see any "Switch to markdown" button, click it. 
+        Enter Title: "{title}"
+        Enter Text: "{body}"
+        Click the Post/Submit button.
+        Verify that the post was created and output the current URL.
         """
         
         agent = Agent(
@@ -63,9 +65,9 @@ class BrowserUseRedditClient:
         
         try:
             result = await agent.run()
+            # Kapatma işlemleri (Browser-use Browser nesnesi kendisi yönetir ama temiz bırakalım)
+            await browser.close()
             
-            # Extract final URL from AI result if possible, or just return success
-            self.logger.info(f"Browser-Use Görevi Tamamlandı! Sonuç: {result}")
             return {
                 "success": True,
                 "post_id": "auto-agent",
@@ -73,6 +75,7 @@ class BrowserUseRedditClient:
             }
         except Exception as e:
             self.logger.error(f"Browser-Use Hata: {str(e)}")
+            await browser.close()
             return {
                 "success": False,
                 "error": str(e)
@@ -81,3 +84,7 @@ class BrowserUseRedditClient:
     def post_to_subreddit(self, subreddit: str, title: str, body: str) -> dict:
         """Senkron olarak dışarıdan çağrılabilen köprü fonksiyon"""
         return asyncio.run(self.async_post(subreddit, title, body))
+
+    def close(self):
+        """Temizlik (Cli.py tarafından çağrılır)"""
+        pass
