@@ -81,8 +81,16 @@ class BrowserRedditClient:
             page.wait_for_load_state("networkidle")
             
             # Try to switch to Markdown mode if it's not already there
-            # This makes the text area much easier to automate
-            # The button might say 'Switch to markdown' or 'Markdown Mode'
+            # In some versions, it's hidden under 'More options' (three dots)
+            try:
+                # Try to find 'More options' first if markdown switch isn't visible
+                more_options = page.locator("button[aria-label*='More' i], button[aria-label*='options' i]").first
+                if more_options.is_visible():
+                    more_options.click()
+                    time.sleep(0.5)
+            except:
+                pass
+
             markdown_selectors = [
                 "button:has-text('Switch to markdown')",
                 "button:has-text('Markdown Mode')",
