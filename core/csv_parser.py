@@ -14,54 +14,63 @@ class CSVParser:
         csv.field_size_limit(sys.maxsize)
 
     def parse_posts(self) -> List[Dict]:
-        """Parses the CSV and returns a list of published blog posts using Regex for maximum robustness."""
+        """Parses the CSV by merging multiline rows based on row-start patterns."""
         posts = []
         try:
             with open(self.csv_path, mode='r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
+                lines = f.readlines()
             
-            # This regex looks for the start of a row (Number,Number,"Date")
-            # and captures until it finds a post indicator (,post,,0)
-            # The structure is: ID,author,date,gmt,content,title,excerpt,status,...type,...,count
-            # We focus on capturing ID, Content, Title and Name
-            pattern = re.compile(
-                r'(\d+),\d+,"[^"]+","[^"]+",(.*?),"([^"]+)",.*?,publish,.*?,post,.*?,(\d+)', 
-                re.DOTALL
-            )
+            if not lines:
+                return []
+
+            # Identify row start: ID,Author,"Date" (e.g., 2201,1,"2023-...)
+            row_start_pattern = re.compile(r'^(\d+),(\d+),"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"')
             
-            matches = pattern.finditer(content)
+            rows_raw = []
+            current_row = ""
             
-            for match in matches:
-                p_id = match.group(1)
-                p_content = match.group(2)
-                p_title = match.group(3)
-                
-                # Cleanup the content (it might have leading/trailing quotes from the regex)
-                p_content = p_content.strip()
-                if p_content.startswith('"') and p_content.endswith('"'):
-                    p_content = p_content[1:-1]
-                
-                # Fix escaped quotes that WP uses (double quotes "")
-                p_content = p_content.replace('""', '"')
-                
-                clean_content = self.clean_html(p_content)
-                
-                posts.append({
-                    'id': p_id,
-                    'title': p_title,
-                    'content': clean_content,
-                    'name': p_title.lower().replace(' ', '-') # Fallback slug
-                })
+            for line in lines[1:]: # Skip header
+                if row_start_pattern.match(line):
+                    if current_row:
+                        rows_raw.append(current_row)
+                    current_row = line
+                else:
+                    current_row += line
             
-            # If regex didn't find many (unlikely but safe), fallback to a simpler line reader
-            if len(posts) < 100:
-                self.logger.warning("Regex parser found very few results, might be a header mismatch.")
+            if current_row:
+                rows_raw.append(current_row)
+
+            # Now parse each merged row using standard csv reader
+            for raw_text in rows_raw:
+                reader = csv.reader([raw_text.strip()])
+                try:
+                    row = next(reader)
+                    # Standard WordPress export column indices:
+                    # ID(0), post_author(1), post_date(2), post_date_gmt(3), post_content(4), post_title(5), ...
+                    if len(row) > 7:
+                        p_id = row[0]
+                        p_content = row[4]
+                        p_title = row[5]
+                        p_status = row[7]
+                        p_type = row[20] if len(row) > 20 else ""
+                        p_name = row[11] if len(row) > 11 else ""
+
+                        if p_status == 'publish' and p_type == 'post':
+                            clean_content = self.clean_html(p_content)
+                            posts.append({
+                                'id': p_id,
+                                'title': p_title,
+                                'content': clean_content,
+                                'name': p_name
+                            })
+                except Exception as e:
+                    continue
             
-            self.logger.info(f"Successfully parsed {len(posts)} posts using Regex parser.")
+            self.logger.info(f"Successfully parsed {len(posts)} posts using line-merging parser.")
             return posts
 
         except Exception as e:
-            self.logger.error(f"Error parsing CSV with regex: {e}")
+            self.logger.error(f"Error parsing CSV with line-merging: {e}")
             return []
 
     def clean_html(self, html_content: str) -> str:
