@@ -93,9 +93,10 @@ def parse(file: str, csv: str):
 @cli.command()
 @click.option('--count', default=1, help='Uretilecek post sayisi')
 @click.option('--subreddit', default='both', help='Hedef subreddit: konusarak_ogren, ingilizce_konusma, both')
-def generate(count: int, subreddit: str):
+@click.option('--auto-approve', is_flag=True, help='Uretilen postlari otomatik onayla')
+def generate(count: int, subreddit: str, auto_approve: bool):
     """AI ile Reddit postlari uret"""
-    console.print(Panel(f"AI ile {count} post uretiliyor", title="Generate"))
+    console.print(Panel(f"AI ile {count} post uretiliyor {'(OTOMATIK ONAY)' if auto_approve else ''}", title="Generate"))
     
     if not NVIDIA_API_KEY:
         console.print("[red]NVIDIA API key bulunamadi. .env dosyasini kontrol edin.[/red]")
@@ -131,6 +132,7 @@ def generate(count: int, subreddit: str):
             db.update_post_status(post['id'], 'processed')
             
             # Save the generated content
+            status = 'approved' if auto_approve else 'generated'
             new_id = db.add_post(
                 title=result['title'],
                 body=result['body'],
@@ -140,10 +142,11 @@ def generate(count: int, subreddit: str):
                 scheduled_for=None,
                 post_name=post.get('post_name')
             )
-            # Mark the new post as generated so it appears in review
-            db.update_post_status(new_id, 'generated')
+            # Mark the new post status
+            db.update_post_status(new_id, status)
             
-            console.print(f"[green]✓ Reddit Postu uretildi: {result['title']}[/green]")
+            msg = "YAYINA HAZIR" if auto_approve else "İnceleme Bekliyor"
+            console.print(f"[green]✓ Reddit Postu uretildi ({msg}): {result['title']}[/green]")
             generated_count += 1
         else:
             console.print(f"[red]✗ Hata: {result.get('error', 'Bilinmeyen hata')}[/red]")
