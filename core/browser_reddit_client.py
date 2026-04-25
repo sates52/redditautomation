@@ -79,8 +79,10 @@ class BrowserRedditClient:
             # and increase timeout to 60 seconds
             page.goto(submit_url, wait_until="domcontentloaded", timeout=60000)
             
-            # Wait for any of the main inputs to appear (indicating page loaded)
-            page.wait_for_load_state("networkidle")
+            # Wait for basic UI structure to appear instead of waiting for networkidle
+            # (Reddit never reaches networkidle due to continuous tracking/ad requests)
+            page.wait_for_selector("body", timeout=30000)
+            time.sleep(3) # Give React a moment to render the complex UI
             
             # Try to switch to Markdown mode if it's not already there
             # In some versions, it's hidden under 'More options' (three dots)
