@@ -115,7 +115,10 @@ class BrowserRedditClient:
             self.logger.info("Icerik dolduruldu.")
 
             # Gonder butonuna bas
-            submit_btn = page.wait_for_selector("button[name='submit'], button[type='submit']", timeout=5000)
+            # old.reddit.com'da buton class="save" ve type="submit"
+            submit_btn = page.locator("button.save[type='submit']").first
+            submit_btn.scroll_into_view_if_needed()
+            time.sleep(0.5)
             submit_btn.click()
             self.logger.info("Gonder butonuna basildi.")
 
