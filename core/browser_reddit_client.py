@@ -1,9 +1,16 @@
 # -*- coding: utf-8 -*-
+"""Old Reddit (old.reddit.com) uzerinden post atan Playwright istemci.
+
+Yeni Reddit arayuzu Shadow DOM ve React kullandigi icin Playwright
+ile uyumsuz. Eski Reddit ise dumduz HTML formlari kullanir ve
+otomasyon icin mukemmeldir.
+"""
 import os
 import time
 import logging
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError
+
 
 class BrowserRedditClient:
     def __init__(self, user_data_dir: str, headless: bool = False):
@@ -16,7 +23,6 @@ class BrowserRedditClient:
     def _start_browser(self):
         if not self.playwright:
             self.playwright = sync_playwright().start()
-            
         if not self.browser_context:
             self.browser_context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
@@ -34,156 +40,105 @@ class BrowserRedditClient:
             self.playwright = None
 
     def check_login(self) -> bool:
-        """Checks if logged in, opens browser for manual login if not."""
+        """old.reddit.com uzerinden login kontrolu yapar."""
         context = self._start_browser()
         page = context.new_page()
-        page.goto("https://www.reddit.com/")
-        
-        # Check if login button exists or if profile icon exists
         try:
-            # If we see "Log In" button, we are likely not logged in
-            login_button = page.wait_for_selector("text=Log In", timeout=5000)
-            if login_button:
-                self.logger.info("Not logged in. Please log in manually in the opened browser.")
-                print("\n[!] Reddit oturumu açık değil. Lütfen açılan tarayıcıda giriş yapın.")
-                print("[!] Giriş yaptıktan sonra bu pencereyi kapatmayın, sistem devam edecektir.\n")
+            page.goto("https://old.reddit.com/", wait_until="domcontentloaded", timeout=30000)
+            time.sleep(2)
+            
+            # old.reddit.com'da login olunca sag ustte kullanici adi gorulur
+            # Login degilse "login or register" linki gorulur
+            user_el = page.query_selector("span.user a.login-required")
+            if user_el:
+                # Demek ki login degil
+                self.logger.info("Login degil. Yeni Reddit uzerinden login deneniyor...")
+                page.goto("https://www.reddit.com/login", wait_until="domcontentloaded", timeout=30000)
+                print("\n[!] Reddit oturumu acik degil. Lutfen acilan tarayicida giris yapin.")
+                print("[!] Giris yaptiktan sonra bu pencereyi kapatmayin.\n")
                 
-                # Wait for user to login - we'll check for profile icon periodically
-                while True:
-                    try:
-                        # reddit.com/user/me should redirect to profile if logged in
-                        # or check for a selector that only appears when logged in
-                        if page.query_selector("[aria-label='User settings']") or page.query_selector("#user-drawer-button"):
-                            self.logger.info("Login detected!")
-                            print("[✓] Giriş başarılı!")
-                            break
-                    except:
-                        pass
+                # Kullanicinin login olmasini bekle
+                for _ in range(120):  # 4 dakika bekle
                     time.sleep(2)
+                    try:
+                        page.goto("https://old.reddit.com/", wait_until="domcontentloaded", timeout=15000)
+                        time.sleep(1)
+                        user_check = page.query_selector("span.user a.login-required")
+                        if not user_check:
+                            # Login basarili
+                            self.logger.info("Login basarili!")
+                            print("[OK] Giris basarili!")
+                            return True
+                    except:
+                        continue
+                return False
+            else:
+                self.logger.info("Zaten login durumunda.")
                 return True
-        except TimeoutError:
-            # If no login button found, maybe we are already logged in
-            self.logger.info("Likely already logged in.")
-            return True
+        except Exception as e:
+            self.logger.error(f"Login kontrol hatasi: {e}")
+            return False
         finally:
             page.close()
 
     def post_to_subreddit(self, subreddit: str, title: str, body: str) -> dict:
+        """old.reddit.com/r/{sub}/submit uzerinden post atar.
+        
+        Old Reddit'in formu cok basit:
+        - input[name='title'] -> Baslik
+        - textarea[name='text'] -> Icerik (selftext tab)
+        - button[name='submit'] -> Gonder
+        """
         context = self._start_browser()
         page = context.new_page()
-        
+
         try:
-            submit_url = f"https://www.reddit.com/r/{subreddit}/submit"
+            submit_url = f"https://old.reddit.com/r/{subreddit}/submit?selftext=true"
             self.logger.info(f"Navigating to {submit_url}")
-            # Use 'domcontentloaded' instead of 'load' to avoid waiting for heavy ads/trackers
-            # and increase timeout to 60 seconds
-            page.goto(submit_url, wait_until="domcontentloaded", timeout=60000)
-            
-            # Wait for basic UI structure to appear instead of waiting for networkidle
-            # (Reddit never reaches networkidle due to continuous tracking/ad requests)
-            page.wait_for_selector("body", timeout=30000)
-            time.sleep(3) # Give React a moment to render the complex UI
-            
-            # Fill Title
-            title_found = False
-            title_selectors = [
-                "textarea[name='title']",
-                "textarea[placeholder='Title']",
-                "h1[contenteditable='true']",
-                "textarea[placeholder*='Title']",
-                "shreddit-composer" # Fallback wrapper
-            ]
-            
-            for selector in title_selectors:
-                try:
-                    page.wait_for_selector(selector, timeout=5000)
-                    page.fill(selector, title)
-                    title_found = True
-                    self.logger.info(f"Title filled using selector: {selector}")
-                    # Switch focus specifically to the body editor using JS to bypass shadow DOM completely
-                    page.evaluate("""
-                        setTimeout(() => {
-                            // Find all possible body containers
-                            const textAreas = document.querySelectorAll('textarea');
-                            const editables = document.querySelectorAll('div[contenteditable="true"]');
-                            
-                            // Usually the body is the last/largest editable div or second textarea
-                            if (editables.length > 0) {
-                                editables[editables.length - 1].focus();
-                            } else if (textAreas.length > 1) {
-                                textAreas[textAreas.length - 1].focus();
-                            }
-                        }, 500);
-                    """)
-                    time.sleep(1.5)
-                    break
-                except:
-                    continue
-            
-            if not title_found:
-                raise Exception("Could not find Title input field")
+            page.goto(submit_url, wait_until="domcontentloaded", timeout=30000)
+            time.sleep(2)
 
-            # Fill Body using Keyboard typing 
-            self.logger.info("Typing body using keyboard simulation (bypassing strict selectors)...")
-            page.keyboard.type(body, delay=0)
-            time.sleep(1)
+            # Selftext (text post) tabinin secili oldugundan emin ol
+            text_tab = page.query_selector("a.text-button, li.selected a[href*='selftext']")
+            if text_tab:
+                text_tab.click()
+                time.sleep(0.5)
 
-            # Click Post / Submit
-            submit_found = False
-            
-            # Since Reddit is using Shadow DOM components now, standard button selectors often fail.
-            # We can use get_by_role which pierces shadow bounds, or look for the Post button within shreddit-composer
-            try:
-                post_btn = page.locator("button, shreddit-button").filter(has_text="Post").first
-                if post_btn.is_visible():
-                    post_btn.click()
-                    submit_found = True
-                    self.logger.info("Submit button clicked via generic locator.")
-            except:
-                pass
-                
-            if not submit_found:
-                try:
-                    # Alternative: get_by_role
-                    role_btn = page.get_by_role("button", name="Post").first
-                    if role_btn.is_visible():
-                        role_btn.click()
-                        submit_found = True
-                        self.logger.info("Submit button clicked via get_by_role.")
-                except:
-                    pass
+            # Baslik doldur
+            title_input = page.wait_for_selector("textarea[name='title'], input[name='title']", timeout=10000)
+            title_input.fill(title)
+            self.logger.info("Baslik dolduruldu.")
 
-            # Final ultimate fallback for clicking Post
-            if not submit_found:
-                try:
-                    page.evaluate("""
-                        const btn = Array.from(document.querySelectorAll('button, shreddit-button, div')).find(el => el.textContent.trim() === 'Post');
-                        if (btn) btn.click();
-                    """)
-                    submit_found = True
-                    self.logger.info("Submit button clicked via Javascript evaluate.")
-                except:
-                    pass
+            # Icerik doldur (selftext textarea)
+            body_textarea = page.wait_for_selector("textarea[name='text']", timeout=10000)
+            body_textarea.fill(body)
+            self.logger.info("Icerik dolduruldu.")
 
-            if not submit_found:
-                raise Exception("Could not find or click enabled Submit button")
+            # Gonder butonuna bas
+            submit_btn = page.wait_for_selector("button[name='submit'], button[type='submit']", timeout=5000)
+            submit_btn.click()
+            self.logger.info("Gonder butonuna basildi.")
 
-            # Wait for redirection to the new post
+            # Yonlendirmeyi bekle (post sayfasina gider)
+            # old.reddit.com'da /comments/ iceren URL'ye yonlendirir
             page.wait_for_url(lambda url: "/comments/" in url, timeout=20000)
             post_url = page.url
-            post_id = post_url.split("/comments/")[1].split("/")[0]
-            
+            post_id = post_url.split("/comments/")[1].split("/")[0] if "/comments/" in post_url else "unknown"
+
+            self.logger.info(f"Post basarili! URL: {post_url}")
             return {
                 "success": True,
                 "post_id": post_id,
                 "post_url": post_url
             }
-                
+
         except Exception as e:
-            self.logger.error(f"Browser post error: {e}")
-            # Take screenshot for debugging
+            self.logger.error(f"Browser post hatasi: {e}")
             screenshot_path = Path("data/error_screenshot.png")
-            page.screenshot(path=str(screenshot_path))
+            try:
+                page.screenshot(path=str(screenshot_path))
+            except:
+                pass
             return {
                 "success": False,
                 "error": str(e),

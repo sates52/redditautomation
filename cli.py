@@ -351,11 +351,16 @@ def browser_post(limit: int, subreddit: str, headful: bool):
     profile_dir = Path("data/browser_profile")
     profile_dir.mkdir(parents=True, exist_ok=True)
     
-    # Force headful for the first time or if requested
-    from core.browser_use_client import BrowserUseRedditClient
-    client = BrowserUseRedditClient(user_data_dir=str(profile_dir.absolute()))
+    # old.reddit.com uzerinden Playwright ile gonderim (Shadow DOM sorunu yok)
+    from core.browser_reddit_client import BrowserRedditClient
+    client = BrowserRedditClient(user_data_dir=str(profile_dir.absolute()), headless=not headful)
     
     try:
+        # Login kontrolu
+        if not client.check_login():
+            console.print("[red]Giris yapilamadi veya tarayici kapandi.[/red]")
+            return
+            
         posted_count = 0
         for post in approved_posts:
             if posted_count >= remaining_limit:
