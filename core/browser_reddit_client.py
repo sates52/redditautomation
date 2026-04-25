@@ -84,42 +84,14 @@ class BrowserRedditClient:
             page.wait_for_selector("body", timeout=30000)
             time.sleep(3) # Give React a moment to render the complex UI
             
-            # Try to switch to Markdown mode if it's not already there
-            # In some versions, it's hidden under 'More options' (three dots)
-            try:
-                # Try to find 'More options' first if markdown switch isn't visible
-                more_options = page.locator("button[aria-label*='More' i], button[aria-label*='options' i]").first
-                if more_options.is_visible():
-                    more_options.click()
-                    time.sleep(0.5)
-            except:
-                pass
-
-            markdown_selectors = [
-                "button:has-text('Switch to markdown')",
-                "button:has-text('Markdown Mode')",
-                "button:has-text('Markdown')"
-            ]
-            
-            for selector in markdown_selectors:
-                try:
-                    btn = page.locator(selector).first
-                    if btn.is_visible():
-                        self.logger.info(f"Switching to Markdown mode using: {selector}")
-                        btn.click()
-                        time.sleep(1)
-                        break
-                except:
-                    continue
-
             # Fill Title
-            # More robust selectors for Title
             title_found = False
             title_selectors = [
                 "textarea[name='title']",
                 "textarea[placeholder='Title']",
                 "h1[contenteditable='true']",
-                "textarea[placeholder*='Title']"
+                "textarea[placeholder*='Title']",
+                "shreddit-composer" # Fallback wrapper
             ]
             
             for selector in title_selectors:
@@ -128,6 +100,9 @@ class BrowserRedditClient:
                     page.fill(selector, title)
                     title_found = True
                     self.logger.info(f"Title filled using selector: {selector}")
+                    # Press Tab to naturally move focus to the Body field
+                    page.press(selector, "Tab")
+                    time.sleep(1)
                     break
                 except:
                     continue
@@ -135,55 +110,47 @@ class BrowserRedditClient:
             if not title_found:
                 raise Exception("Could not find Title input field")
 
-            # Fill Body
-            # In Markdown mode, it's usually a textarea
-            body_found = False
-            body_selectors = [
-                "textarea[name='text']",
-                "textarea[placeholder*='Text']",
-                "textarea[placeholder*='optional']",
-                "div[contenteditable='true']"
-            ]
-            
-            for selector in body_selectors:
-                try:
-                    page.wait_for_selector(selector, timeout=5000)
-                    page.fill(selector, body)
-                    body_found = True
-                    self.logger.info(f"Body filled using selector: {selector}")
-                    break
-                except:
-                    continue
-            
-            if not body_found:
-                raise Exception("Could not find Body input field")
+            # Fill Body using Keyboard typing (Focus is already on the Body field due to TAB)
+            self.logger.info("Typing body using keyboard simulation (bypassing strict selectors)...")
+            page.keyboard.type(body, delay=0)
+            time.sleep(1)
 
             # Click Post / Submit
             submit_found = False
-            submit_button_selectors = [
-                "button:has-text('Post')",
-                "button[type='submit']",
-                "button:has-text('Submit')"
-            ]
             
-            for selector in submit_button_selectors:
-                try:
-                    btn = page.locator(selector).first
-                    if btn.is_enabled():
-                        btn.click()
-                        submit_found = True
-                        self.logger.info(f"Submit button clicked using selector: {selector}")
-                        break
-                except:
-                    continue
-
-            if not submit_found:
-                # One last try - maybe the button isn't enabled because of a small delay
-                time.sleep(2)
-                btn = page.locator("button:has-text('Post')").first
-                if btn.is_enabled():
-                    btn.click()
+            # Since Reddit is using Shadow DOM components now, standard button selectors often fail.
+            # We can use get_by_role which pierces shadow bounds, or look for the Post button within shreddit-composer
+            try:
+                post_btn = page.locator("button, shreddit-button").filter(has_text="Post").first
+                if post_btn.is_visible():
+                    post_btn.click()
                     submit_found = True
+                    self.logger.info("Submit button clicked via generic locator.")
+            except:
+                pass
+                
+            if not submit_found:
+                try:
+                    # Alternative: get_by_role
+                    role_btn = page.get_by_role("button", name="Post").first
+                    if role_btn.is_visible():
+                        role_btn.click()
+                        submit_found = True
+                        self.logger.info("Submit button clicked via get_by_role.")
+                except:
+                    pass
+
+            # Final ultimate fallback for clicking Post
+            if not submit_found:
+                try:
+                    page.evaluate("""
+                        const btn = Array.from(document.querySelectorAll('button, shreddit-button, div')).find(el => el.textContent.trim() === 'Post');
+                        if (btn) btn.click();
+                    """)
+                    submit_found = True
+                    self.logger.info("Submit button clicked via Javascript evaluate.")
+                except:
+                    pass
 
             if not submit_found:
                 raise Exception("Could not find or click enabled Submit button")
