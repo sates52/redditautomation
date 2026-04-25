@@ -10,38 +10,52 @@ class CSVParser:
         self.logger = logging.getLogger(__name__)
 
     def parse_posts(self) -> List[Dict]:
-        """Parses the CSV and returns a list of published blog posts."""
+        """Parses the CSV and returns a list of published blog posts using standard csv module."""
+        posts = []
         try:
-            # More robust CSV reading for multiline HTML content
-            df = pd.read_csv(
-                self.csv_path, 
-                sep=',',
-                quotechar='"',
-                quoting=csv.QUOTE_MINIMAL,
-                escapechar='\\',
-                on_bad_lines='warn',
-                encoding='utf-8'
-            )
+            with open(self.csv_path, mode='r', encoding='utf-8', errors='ignore') as f:
+                # WordPress CSVs often use complex escaping, DictReader handles basic cases well
+                # We'll use a standard reader to be more flexible with field counts
+                reader = csv.reader(f, delimiter=',', quotechar='"')
+                
+                # Get header
+                try:
+                    header = next(reader)
+                except StopIteration:
+                    return []
+
+                # Find column indices
+                try:
+                    idx_status = header.index('post_status')
+                    idx_type = header.index('post_type')
+                    idx_title = header.index('post_title')
+                    idx_content = header.index('post_content')
+                    idx_name = header.index('post_name')
+                    idx_id = header.index('ID')
+                except ValueError as e:
+                    self.logger.error(f"Missing required columns in CSV: {e}")
+                    return []
+
+                for row in reader:
+                    # Skip empty rows or rows with missing critical fields
+                    if not row or len(row) <= max(idx_status, idx_type, idx_title, idx_content):
+                        continue
+
+                    # Filter for published posts
+                    if row[idx_status] == 'publish' and row[idx_type] == 'post':
+                        clean_content = self.clean_html(str(row[idx_content]))
+                        posts.append({
+                            'id': row[idx_id],
+                            'title': row[idx_title],
+                            'content': clean_content,
+                            'name': row[idx_name]
+                        })
             
-            # Filter for published posts
-            published_posts = df[(df['post_status'] == 'publish') & (df['post_type'] == 'post')]
-            
-            posts = []
-            for _, row in published_posts.iterrows():
-                clean_content = self.clean_html(str(row['post_content']))
-                posts.append({
-                    'id': row['ID'],
-                    'title': row['post_title'],
-                    'content': clean_content,
-                    'name': row['post_name'],
-                    'url': f"https://www.konusarakogren.com/blog/{row['post_name']}"
-                })
-            
-            self.logger.info(f"Successfully parsed {len(posts)} posts from {self.csv_path}")
+            self.logger.info(f"Successfully parsed {len(posts)} posts using robust parser.")
             return posts
 
         except Exception as e:
-            self.logger.error(f"Error parsing CSV: {e}")
+            self.logger.error(f"Error parsing CSV with robust reader: {e}")
             return []
 
     def clean_html(self, html_content: str) -> str:
