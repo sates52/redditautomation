@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Environment variables
+.env
+
+# Data and SQLite
+data/*.db
+data/*.log
+data/browser_profile/
+data/error_screenshot.png
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
