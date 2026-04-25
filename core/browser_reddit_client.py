@@ -75,7 +75,9 @@ class BrowserRedditClient:
         try:
             submit_url = f"https://www.reddit.com/r/{subreddit}/submit"
             self.logger.info(f"Navigating to {submit_url}")
-            page.goto(submit_url)
+            # Use 'domcontentloaded' instead of 'load' to avoid waiting for heavy ads/trackers
+            # and increase timeout to 60 seconds
+            page.goto(submit_url, wait_until="domcontentloaded", timeout=60000)
             
             # Wait for any of the main inputs to appear (indicating page loaded)
             page.wait_for_load_state("networkidle")
