@@ -366,8 +366,13 @@ def browser_post(limit: int, subreddit: str, headful: bool):
             return
             
         posted_count = 0
+        consecutive_error_count = 0
         for post in approved_posts:
             if posted_count >= remaining_limit:
+                break
+            
+            if consecutive_error_count >= 3:
+                console.print("[red]Ust uste 3 hata alindi. Reddit tarafindan engellenmis olabilirsiniz. Islem durduruluyor.[/red]")
                 break
                 
             console.print(f"\n[bold]Post gonderiliyor ({posted_count+1}/{remaining_limit}): {post['title']}[/bold]")
@@ -385,13 +390,15 @@ def browser_post(limit: int, subreddit: str, headful: bool):
                 db.set_reddit_info(post['id'], result['post_id'], result['post_url'])
                 console.print(f"[green]✓ Basarili: {result['post_url']}[/green]")
                 posted_count += 1
+                consecutive_error_count = 0 # Reset count on success
                 # Wait between posts to be safer
                 if posted_count < remaining_limit:
                     sleep_time = 30
                     console.print(f"[dim]{sleep_time} saniye bekleniyor...[/dim]")
                     time.sleep(sleep_time)
             else:
-                console.print(f"[red]✗ Hata: {result.get('error')}[/red]")
+                consecutive_error_count += 1
+                console.print(f"[red]✗ Hata ({consecutive_error_count}/3): {result.get('error')}[/red]")
                 if 'screenshot' in result:
                     console.print(f"[dim]Hata goruntusu kaydedildi: {result['screenshot']}[/dim]")
                 db.update_post_status(post['id'], 'error', result.get('error'))
