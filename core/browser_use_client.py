@@ -5,8 +5,13 @@ import logging
 from typing import Dict
 from pathlib import Path
 
-# Browser-use requires asyncio and langchain. We will use the local Playwright profile.
-from browser_use import Agent, Browser, BrowserConfig
+# Try to handle version differences in browser-use
+try:
+    from browser_use import Agent, Browser, BrowserConfig
+except ImportError:
+    from browser_use import Agent, Browser
+    # Some versions might not export BrowserConfig directly or use a different name
+    BrowserConfig = None 
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
 class BrowserUseRedditClient:
@@ -26,14 +31,19 @@ class BrowserUseRedditClient:
         llm = ChatNVIDIA(model="meta/llama-3.1-70b-instruct", temperature=0.0)
         
         # Kendi Chrome profilimizi kullanıyoruz (Giriş yapılmış olan)
-        browser = Browser(
-            config=BrowserConfig(
-                chrome_instance_path=None, # Sistemdeki varsayılan veya Playwright kurulan yolu kullanır
+        if BrowserConfig:
+            browser_config = BrowserConfig(
                 user_data_dir=self.user_data_dir,
                 headless=False,
                 disable_security=True
             )
-        )
+            browser = Browser(config=browser_config)
+        else:
+            # Fallback if BrowserConfig is not available (some older/newer versions)
+            browser = Browser(
+                user_data_dir=self.user_data_dir,
+                headless=False
+            )
         
         task_instruction = f"""
         Go to https://www.reddit.com/r/{subreddit}/submit
