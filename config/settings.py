@@ -21,7 +21,7 @@ SUBREDDIT_1 = os.getenv("SUBREDDIT_1", "KonusarakOgren")
 SUBREDDIT_2 = os.getenv("SUBREDDIT_2", "IngilizceKonusma")
 
 POSTS_PER_DAY = int(os.getenv("POSTS_PER_DAY", "5"))
-MIN_HOURS_BETWEEN_POSTS = int(os.getenv("MIN_HOURS_BETWEEN_POSTS", "2"))
+MIN_HOURS_BETWEEN_POSTS = float(os.getenv("MIN_HOURS_BETWEEN_POSTS", "2"))
 DAILY_POST_LIMIT = int(os.getenv("DAILY_POST_LIMIT", "5"))
 TARGET_SUBREDDIT = os.getenv("TARGET_SUBREDDIT", "KonusarakOgren")
 
