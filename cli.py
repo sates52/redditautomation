@@ -333,24 +333,35 @@ def browser_post(limit: int, subreddit: str, headful: bool):
     approved_posts = db.get_posts_by_status('approved')
     
     if not approved_posts:
-        console.print("[yellow]Gonderilecek onayli post yok[/yellow]")
+        console.print("[yellow]Gonderilecek onayli post yok. Once parse ve generate/review yapin.[/yellow]")
         return
-        
-    # Check how many posts already posted today
-    # Filter by 'posted' status and 'posted_at' date
-    import sqlite3
-    conn = sqlite3.connect(str(DB_PATH))
-    cursor = conn.cursor()
-    cursor.execute("SELECT count(*) FROM posts WHERE status='posted' AND date(posted_at) = date('now')")
-    today_posted_count = cursor.fetchone()[0]
-    conn.close()
-    
-    remaining_limit = limit - today_posted_count
+
+    # Gunluk limit kontrolu
+    today_posts = 0 # Baslangic
+    try:
+        import sqlite3
+        from datetime import datetime
+        today = datetime.now().strftime('%Y-%m-%d')
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM posts WHERE status='posted' AND posted_at LIKE ?", (f"{today}%",))
+        today_posts = cursor.fetchone()[0]
+        conn.close()
+    except: pass
+
+    remaining_limit = DAILY_POST_LIMIT - today_posts
     if remaining_limit <= 0:
-        console.print(f"[yellow]Gunluk limit dolmuş ({limit}/{limit}). Yarin tekrar deneriz.[/yellow]")
+        console.print(f"[yellow]Gunluk limit dolmus ({DAILY_POST_LIMIT}). Bugun daha fazla atilamaz.[/yellow]")
         return
-        
-    console.print(f"[cyan]Bugun {today_posted_count} post atildi. {remaining_limit} tane daha atilabilir.[/cyan]")
+
+    # Bu calisma icin kac tane atilacak?
+    work_count = remaining_limit
+    if count > 0 and count < remaining_limit:
+        work_count = count
+    
+    console.print(f"Bugun {today_posts} post atildi. {remaining_limit} tane daha atilabilir.")
+    if count > 0:
+        console.print(f"Bu oturumda maksimum {work_count} post atilacak.")
     
     profile_dir = Path("data/browser_profile")
     profile_dir.mkdir(parents=True, exist_ok=True)
@@ -368,14 +379,14 @@ def browser_post(limit: int, subreddit: str, headful: bool):
         posted_count = 0
         consecutive_error_count = 0
         for post in approved_posts:
-            if posted_count >= remaining_limit:
+            if posted_count >= work_count:
                 break
             
             if consecutive_error_count >= 3:
                 console.print("[red]Ust uste 3 hata alindi. Reddit tarafindan engellenmis olabilirsiniz. Islem durduruluyor.[/red]")
                 break
                 
-            console.print(f"\n[bold]Post gonderiliyor ({posted_count+1}/{remaining_limit}): {post['title']}[/bold]")
+            console.print(f"\n[bold]Post gonderiliyor ({posted_count+1}/{work_count}): {post['title']}[/bold]")
             
             # Subreddit from settings or post or parameter
             target_sub = subreddit or post['subreddit_type'].replace('_', '')
@@ -392,7 +403,7 @@ def browser_post(limit: int, subreddit: str, headful: bool):
                 posted_count += 1
                 consecutive_error_count = 0 # Reset count on success
                 # Wait between posts to be safer
-                if posted_count < remaining_limit:
+                if posted_count < work_count:
                     sleep_time = 30
                     console.print(f"[dim]{sleep_time} saniye bekleniyor...[/dim]")
                     time.sleep(sleep_time)
