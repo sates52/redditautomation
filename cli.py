@@ -151,6 +151,9 @@ def generate(count: int, subreddit: str, auto_approve: bool):
         else:
             console.print(f"[red]✗ Hata: {result.get('error', 'Bilinmeyen hata')}[/red]")
             db.update_post_status(post['id'], 'error', result.get('error'))
+            
+        import time
+        time.sleep(3) # Rate limit onlemi icin biraz bekle
     
     console.print(f"\n[bold green]✓ {generated_count} post basariyla uretildi[/bold green]")
 

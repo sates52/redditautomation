@@ -29,49 +29,61 @@ class AIGenerator:
         
         user_content = f"Blog Yazısı Özeti:\n\nBaşlık: {post_title}\n\nİçerik:\n{post_content}\n\nLink: {post_url}"
         
-        try:
-            self.logger.info(f"Generating Reddit post (Variation: {variation['name']}) for: {post_title}")
-            
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content}
-                ],
-                temperature=0.4, # Slightly higher for more variety
-                top_p=0.8,
-                max_tokens=2048,
-                stream=True
-            )
-            
-            full_response = ""
-            for chunk in completion:
-                if not chunk.choices:
-                    continue
-                if chunk.choices[0].delta.content is not None:
-                    content = chunk.choices[0].delta.content
-                    full_response += content
-            
-            # Split title and body
-            title, body = self._parse_reddit_response(full_response)
-            
-            # Check if URL is in body, if not (though prompt asks for it), append it safely with standard Markdown
-            if post_url not in body:
-                body = f"{body}\n\n[Devamı için blog yazımızı inceleyebilirsiniz]({post_url})"
-            
-            return {
-                "success": True,
-                "title": title,
-                "body": body,
-                "variation_used": variation['name']
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error generating post: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if attempt == 0:
+                    self.logger.info(f"Generating Reddit post (Variation: {variation['name']}) for: {post_title}")
+                else:
+                    import time
+                    wait_time = (attempt + 1) * 10
+                    self.logger.info(f"Retrying API call (Attempt {attempt+1}/{max_retries}) after {wait_time}s wait...")
+                    time.sleep(wait_time)
+                
+                completion = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    temperature=0.4, # Slightly higher for more variety
+                    top_p=0.8,
+                    max_tokens=2048,
+                    stream=True
+                )
+                
+                full_response = ""
+                for chunk in completion:
+                    if not chunk.choices:
+                        continue
+                    if chunk.choices[0].delta.content is not None:
+                        content = chunk.choices[0].delta.content
+                        full_response += content
+                
+                # Split title and body
+                title, body = self._parse_reddit_response(full_response)
+                
+                # Check if URL is in body, if not (though prompt asks for it), append it safely with standard Markdown
+                if post_url not in body:
+                    body = f"{body}\n\n[Devamı için blog yazımızı inceleyebilirsiniz]({post_url})"
+                
+                return {
+                    "success": True,
+                    "title": title,
+                    "body": body,
+                    "variation_used": variation['name']
+                }
+                
+            except Exception as e:
+                error_str = str(e)
+                self.logger.error(f"Error generating post: {error_str}")
+                
+                # If it's the last attempt or an error we shouldn't retry, break.
+                if attempt == max_retries - 1:
+                    return {
+                        "success": False,
+                        "error": error_str
+                    }
 
     def _parse_reddit_response(self, response_text: str) -> (str, str):
         """Parses the response to separate title and body."""
